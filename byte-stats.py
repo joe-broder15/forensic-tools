@@ -53,16 +53,18 @@ def analyze_file(file: str) -> pd.DataFrame:
     unique_bytes = np.unique(np_bytes).size
     mean_value = hex(int(np.mean(np_bytes)))
     median_value = hex(int(np.median(np_bytes)))
-    std_value = np.std(np_bytes)
+    std_value = hex(int(np.std(np_bytes)))
     
     # Calculate rate-of-change statistics (differences between consecutive bytes)
     rate_of_change = np.diff(np_bytes)
     if rate_of_change.size > 0:
-        mean_rate_of_change = np.mean(rate_of_change)
-        median_rate_of_change = np.median(rate_of_change)
-        std_rate_of_change = np.std(rate_of_change)
+        mean_rate_of_change = hex(int(np.mean(rate_of_change)))
+        median_rate_of_change = hex(int(np.median(rate_of_change)))
+        std_rate_of_change = hex(int(np.std(rate_of_change)))
     else:
-        mean_rate_of_change = median_rate_of_change = std_rate_of_change = 0
+        mean_rate_of_change = hex(0)
+        median_rate_of_change = hex(0)
+        std_rate_of_change = hex(0)
 
     # Extract file information
     file_type = os.path.splitext(file)[1]
