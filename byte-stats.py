@@ -17,6 +17,9 @@ import numpy as np
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog
+from itertools import groupby          # For computing byte runs
+from collections import Counter          # For counting common byte patterns
+from scipy.stats import skew, kurtosis   # For distribution characteristics (skewness and kurtosis)
 
 def analyze_file(file: str) -> pd.DataFrame:
     """
@@ -66,31 +69,81 @@ def analyze_file(file: str) -> pd.DataFrame:
         median_rate_of_change = hex(0)
         std_rate_of_change = hex(0)
 
+    # Calculate entropy of the byte distribution
+    probabilities = byte_counts / total_bytes if total_bytes > 0 else np.zeros_like(byte_counts, dtype=float)
+    non_zero_probs = probabilities[probabilities > 0]
+    entropy = -np.sum(non_zero_probs * np.log2(non_zero_probs))
+
+    # Analyze byte runs: maximum run length and average run length
+    runs = [len(list(g)) for _, g in groupby(np_bytes)]
+    max_run_length = max(runs) if runs else 0
+    avg_run_length = sum(runs) / len(runs) if runs else 0
+
+    # Analyze common byte patterns for 2-byte sequences
+    if len(file_bytes) >= 2:
+        patterns2 = [file_bytes[i:i+2] for i in range(len(file_bytes) - 1)]
+        counter2 = Counter(pattern.hex() for pattern in patterns2)
+        common_2byte_patterns = [f"{pat} (count: {cnt})" for pat, cnt in counter2.most_common(3)]
+    else:
+        common_2byte_patterns = []
+
+    # Analyze common byte patterns for 4-byte sequences
+    if len(file_bytes) >= 4:
+        patterns4 = [file_bytes[i:i+4] for i in range(len(file_bytes) - 3)]
+        counter4 = Counter(pattern.hex() for pattern in patterns4)
+        common_4byte_patterns = [f"{pat} (count: {cnt})" for pat, cnt in counter4.most_common(3)]
+    else:
+        common_4byte_patterns = []
+
+    # Calculate distribution characteristics: skewness and kurtosis of byte values
+    skewness_value = skew(np_bytes)
+    kurtosis_value = kurtosis(np_bytes)
+
     # Extract file information
     file_type = os.path.splitext(file)[1]
     filename = os.path.basename(file)
 
-    # Compile all statistics into a dictionary
+    # Compile all statistics into a dictionary with grouped and logically ordered data
     stats = {
+        # File Metadata
         'filename': filename,
         'file_type': file_type,
-        'most_common_bytes': most_common,
-        'least_common_bytes': least_common,
+        
+        # Byte Occurrence Statistics
         'total_bytes': total_bytes,
         'nonzero_bytes': nonzero_bytes,
         'unique_bytes': unique_bytes,
+        'most_common_bytes': most_common,
+        'least_common_bytes': least_common,
+        
+        # Basic Byte Value Statistics
         'mean_byte_value': mean_value,
         'median_byte_value': median_value,
         'std_dev_byte_value': std_value,
+        'skewness': skewness_value,
+        'kurtosis': kurtosis_value,
+        
+        # Rate-of-Change Metrics
         'mean_rate_of_change': mean_rate_of_change,
         'median_rate_of_change': median_rate_of_change,
-        'std_dev_rate_of_change': std_rate_of_change
+        'std_dev_rate_of_change': std_rate_of_change,
+        
+        # Distribution and Pattern Analyses
+        'entropy': entropy,
+        'max_run_length': max_run_length,
+        'avg_run_length': avg_run_length,
+        'common_2byte_patterns': common_2byte_patterns,
+        'common_4byte_patterns': common_4byte_patterns
     }
 
-    # Define the column order for the output DataFrame
-    columns = ['filename', 'file_type', 'most_common_bytes', 'least_common_bytes', 
-               'total_bytes', 'nonzero_bytes', 'unique_bytes', 'mean_byte_value', 'median_byte_value', 
-               'std_dev_byte_value', 'mean_rate_of_change', 'median_rate_of_change', 'std_dev_rate_of_change']
+    # Define the column order for the output DataFrame following the grouped structure
+    columns = [
+        'filename', 'file_type',
+        'total_bytes', 'nonzero_bytes', 'unique_bytes', 'most_common_bytes', 'least_common_bytes',
+        'mean_byte_value', 'median_byte_value', 'std_dev_byte_value', 'skewness', 'kurtosis',
+        'mean_rate_of_change', 'median_rate_of_change', 'std_dev_rate_of_change',
+        'entropy', 'max_run_length', 'avg_run_length', 'common_2byte_patterns', 'common_4byte_patterns'
+    ]
     
     return pd.DataFrame([stats], columns=columns)
 
@@ -122,7 +175,11 @@ def print_file_stats(df: pd.DataFrame):
         print(f"FILE #{i}: {row.filename}")
         # Iterate through all fields in the row
         for field, value in row._asdict().items():
-            print(f"    {field}: {value}")
+            if isinstance(value, (list, np.ndarray)):
+                # Convert each element of the array to a string and join them with commas
+                print(f"    {field}: {', '.join(str(item) for item in value)}")
+            else:
+                print(f"    {field}: {value}")
         print()
 
 def pick_files_gui() -> list[str]:
