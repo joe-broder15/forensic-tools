@@ -1,25 +1,50 @@
-# Byte Statistics Analyzer
+# Forensic Tools
 
-The **Byte Statistics Analyzer** is a versatile Python tool that provides an in-depth byte-level analysis of files. It not only calculates basic statistics such as byte frequencies, mean, median, and standard deviation, but also dives deeper with advanced metrics like skewness, kurtosis, entropy, rate-of-change, run length, and common multi-byte patterns. This comprehensive analysis makes it invaluable for detailed data inspection.
+A collection of Python-based forensic analysis tools designed for detailed file examination and metadata extraction. This repository contains utilities that help with digital forensics, file analysis, and metadata inspection.
 
-Developed as part of a broader suite of utilities in this repository, this tool complements other data analysis and processing tools, forming a robust multi-tool environment.
+## Tools Included
 
-## Features
+### 1. Byte Statistics Analyzer
 
-- **Byte Frequency Analysis:** Computes the count for each byte value (0–255) found in a file.
-- **Common & Uncommon Bytes:** Identifies the top three most frequent bytes (displayed in hexadecimal) and the three least frequent non-zero bytes.
-- **Comprehensive Statistics:** Calculates mean, median, standard deviation, skewness, kurtosis, and entropy of byte values.
-- **Rate-of-Change & Run Analysis:** Evaluates differences between consecutive bytes and analyzes byte runs (max and average lengths) to discover patterns.
-- **Pattern Detection:** Detects frequent 2-byte and 4-byte sequences along with their respective counts.
-- **Dual Interface:** Offers both command-line options and an intuitive GUI for selecting files or directories.
-- **CSV Export Capability:** Optionally exports the analysis results to a CSV file (`byte_stats.csv`) for easy sharing and further processing.
+A comprehensive tool that provides in-depth byte-level analysis of files, calculating various statistical metrics and identifying patterns.
+
+**Features:**
+- Byte frequency analysis and distribution statistics
+- Identification of common and uncommon bytes
+- Statistical measures: mean, median, standard deviation, skewness, kurtosis, and entropy
+- Rate-of-change analysis between consecutive bytes
+- Run length analysis to discover patterns
+- Detection of frequent 2-byte and 4-byte sequences
+- CSV export capability for further analysis
+
+### 2. EXIF Analyzer
+
+A specialized tool for extracting and analyzing EXIF metadata from image files, providing detailed information about images and their origins.
+
+**Features:**
+- Comprehensive extraction of EXIF metadata from image files
+- Detailed display of tag information with proper categorization
+- Support for all standard EXIF IFDs (Image File Directories)
+- Hierarchical display of nested metadata structures
+- Verbose mode for detailed tag information including tag IDs and data types
+
+## Common Features
+
+Both tools share these capabilities:
+- Dual interface: command-line options and intuitive GUI
+- Batch processing of multiple files
+- Directory-based analysis
+- Detailed output formatting
 
 ## Requirements
 
-- Python 3.x
-- [NumPy](https://numpy.org)
-- [Pandas](https://pandas.pydata.org)
-- [Tkinter](https://docs.python.org/3/library/tkinter.html)
+```
+numpy
+pandas
+tk
+scipy
+piexif
+```
 
 Install the required packages using:
 
@@ -29,35 +54,39 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the analyzer from the command line as shown below:
+### Byte Statistics Analyzer
 
 ```
-python byte-stats.py -f path/to/file1 path/to/file2 --generate-csv
+python byte-stats-analyzer.py -f path/to/file1 path/to/file2 --generate-csv
 ```
 
-### Command-Line Options
+**Command-Line Options:**
+- `-f`, `--files`: Specify one or more file paths for analysis
+- `-d`, `--dirs`: Specify one or more directory paths to analyze
+- `--generate-csv`: Save analysis results to CSV file
 
-- **`-f`, `--files`**: Specify one or more file paths for analysis.  
-  If omitted, the tool will launch a GUI file picker.
-- **`-d`, `--dirs`**: Specify one or more directory paths (non-recursively) to analyze.  
-  If omitted, a GUI directory picker will be launched.
-- **`--generate-csv`**: When provided, the tool saves the analysis results to `byte_stats.csv`.
+### EXIF Analyzer
 
-## How It Works
+```
+python exif-analyzer.py -f path/to/image1.jpg path/to/image2.jpg --verbose
+```
 
-1. **File Reading & Conversion:** Files are opened in binary mode and their contents are converted into a NumPy array.
-2. **Data Analysis:** The tool computes an extensive set of statistics, including byte frequency, rate-of-change, run lengths, entropy, and common multi-byte patterns.
-3. **Output Generation:** The computed statistics are printed to the console, and if requested, exported to a CSV file.
+**Command-Line Options:**
+- `-f`, `--files`: Specify one or more image files for analysis
+- `-d`, `--dirs`: Specify one or more directory paths containing images
+- `-v`, `--verbose`: Display detailed tag information including tag IDs and types
 
-## Example Scenario
+## GUI Mode
 
-When executed without any command-line arguments:
-- The tool automatically opens a GUI file (or directory) picker to let you select files.
-- After analysis, detailed byte statistics are displayed in the console.
-- If the CSV flag is provided, the results are also saved to `byte_stats.csv`.
+If you run either tool without specifying files or directories, a graphical file picker will launch automatically, allowing you to select files or directories interactively.
+
+## Utility Modules
+
+The repository includes a `utils` package with reusable components:
+- `file_picker.py`: A unified interface for file selection operations
 
 ## License
 
-This project is open source and distributed under the MIT License. You are free to use, modify, and distribute this tool as part of our growing collection of utilities.
+This project is open source and distributed under the MIT License. You are free to use, modify, and distribute these tools as needed.
 
 Happy analyzing!
