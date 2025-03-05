@@ -43,12 +43,12 @@ def analyze_file(file: str) -> pd.DataFrame:
 
     # Determine the top 3 most common bytes (as hex strings)
     most_common_indices = byte_counts.argsort()[-3:][::-1]
-    most_common = [hex(byte) for byte in most_common_indices]
+    most_common = [f"{hex(byte)} (count: {byte_counts[byte]})" for byte in most_common_indices]
 
     # Determine the top 3 least common bytes (excluding those with zero count)
     non_zero_indices = np.where(byte_counts > 0)[0]
     least_common_indices = non_zero_indices[np.argsort(byte_counts[non_zero_indices])[:3]]
-    least_common = [hex(byte) for byte in least_common_indices]
+    least_common = [f"{hex(byte)} (count: {byte_counts[byte]})" for byte in least_common_indices]
 
     # Calculate various statistics
     total_bytes = byte_counts.sum()
