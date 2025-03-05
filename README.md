@@ -10,7 +10,7 @@ A comprehensive tool that provides in-depth byte-level analysis of files, calcul
 
 **Features:**
 - Byte frequency analysis and distribution statistics
-- Identification of common and uncommon bytes
+- Identification of common and uncommon bytes (displayed in hex)
 - Statistical measures: mean, median, standard deviation, skewness, kurtosis, and entropy
 - Rate-of-change analysis between consecutive bytes
 - Run length analysis to discover patterns
@@ -35,6 +35,19 @@ Both tools share these capabilities:
 - Batch processing of multiple files
 - Directory-based analysis
 - Detailed output formatting
+
+## Project Structure
+
+```
+forensic-tools/
+├── byte-stats-analyzer.py  # Byte-level file analysis tool
+├── exif-analyzer.py        # EXIF metadata extraction tool
+├── requirements.txt        # Python dependencies
+├── utils/                  # Shared utility modules
+│   ├── __init__.py
+│   └── file_picker.py      # Unified file selection interface
+└── LICENSE                 # MIT License
+```
 
 ## Requirements
 
@@ -83,7 +96,7 @@ If you run either tool without specifying files or directories, a graphical file
 ## Utility Modules
 
 The repository includes a `utils` package with reusable components:
-- `file_picker.py`: A unified interface for file selection operations
+- `file_picker.py`: A unified interface for file selection operations that supports both GUI and command-line modes
 
 ## License
 
