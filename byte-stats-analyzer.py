@@ -14,96 +14,175 @@ Features:
 import os 
 import argparse  # using argparse for command-line arguments
 import numpy as np
-import pandas as pd
 import tkinter as tk
 from tkinter import filedialog
 from itertools import groupby          # For computing byte runs
 from collections import Counter          # For counting common byte patterns
 from scipy.stats import skew, kurtosis   # For distribution characteristics (skewness and kurtosis)
 
-def analyze_file(file: str) -> pd.DataFrame:
-    """
-    Analyze the given file for byte statistics and return a DataFrame containing the results.
-    
-    Parameters:
-        file (str): Path to the file to analyze.
-        
-    Returns:
-        pd.DataFrame: Single-row DataFrame with statistics for the file.
-    """
-    # Read file bytes from disk
-    with open(file, "rb") as f:
-        file_bytes = f.read()
+# Import the FilePicker class from utils/file_picker.py
+from utils.file_picker import FilePicker
 
-    # Convert file content to a numpy array of uint8
-    np_bytes = np.frombuffer(file_bytes, dtype=np.uint8)
+def compute_file_metadata(file: str):
+    filename = os.path.basename(file)
+    file_type = os.path.splitext(file)[1]
+    return filename, file_type
 
-    # Calculate byte frequency ensuring count for each byte value (0-255)
+def compute_byte_occurrences(np_bytes: np.ndarray):
     byte_counts = np.bincount(np_bytes, minlength=256)
-
-    # Determine the top 3 most common bytes (as hex strings)
+    total_bytes = byte_counts.sum()
+    unique_bytes = np.unique(np_bytes).size
+    # Most common: top 3
     most_common_indices = byte_counts.argsort()[-3:][::-1]
     most_common = [f"{hex(byte)} (count: {byte_counts[byte]})" for byte in most_common_indices]
-
-    # Determine the top 3 least common bytes (excluding those with zero count)
+    # Least common: top 3 nonzero
     non_zero_indices = np.where(byte_counts > 0)[0]
     least_common_indices = non_zero_indices[np.argsort(byte_counts[non_zero_indices])[:3]]
     least_common = [f"{hex(byte)} (count: {byte_counts[byte]})" for byte in least_common_indices]
+    return byte_counts, total_bytes, unique_bytes, most_common, least_common
 
-    # Calculate various statistics
-    total_bytes = byte_counts.sum()
-    nonzero_bytes = (np_bytes > 0).sum()
-    unique_bytes = np.unique(np_bytes).size
+def compute_basic_stats(np_bytes: np.ndarray):
     mean_value = hex(int(np.mean(np_bytes)))
     median_value = hex(int(np.median(np_bytes)))
     std_value = hex(int(np.std(np_bytes)))
-    
-    # Calculate rate-of-change statistics (differences between consecutive bytes)
+    return mean_value, median_value, std_value
+
+def compute_rate_of_change(np_bytes: np.ndarray):
     rate_of_change = np.diff(np_bytes)
     if rate_of_change.size > 0:
-        mean_rate_of_change = hex(int(np.mean(rate_of_change)))
-        median_rate_of_change = hex(int(np.median(rate_of_change)))
-        std_rate_of_change = hex(int(np.std(rate_of_change)))
+        mean_rate = hex(int(np.mean(rate_of_change)))
+        median_rate = hex(int(np.median(rate_of_change)))
+        std_rate = hex(int(np.std(rate_of_change)))
     else:
-        mean_rate_of_change = hex(0)
-        median_rate_of_change = hex(0)
-        std_rate_of_change = hex(0)
+        mean_rate = hex(0)
+        median_rate = hex(0)
+        std_rate = hex(0)
+    return mean_rate, median_rate, std_rate
 
-    # Calculate entropy of the byte distribution
-    probabilities = byte_counts / total_bytes if total_bytes > 0 else np.zeros_like(byte_counts, dtype=float)
-    non_zero_probs = probabilities[probabilities > 0]
-    entropy = -np.sum(non_zero_probs * np.log2(non_zero_probs))
+def compute_entropy(byte_counts: np.ndarray, total_bytes: int):
+    if total_bytes > 0:
+        probabilities = byte_counts / total_bytes
+        non_zero_probs = probabilities[probabilities > 0]
+        entropy = -np.sum(non_zero_probs * np.log2(non_zero_probs))
+    else:
+        entropy = 0
+    return entropy
 
-    # Analyze byte runs: maximum run length and average run length
-    runs = [len(list(g)) for _, g in groupby(np_bytes)]
-    max_run_length = max(runs) if runs else 0
-    avg_run_length = sum(runs) / len(runs) if runs else 0
+def compute_runs(np_bytes: np.ndarray):
+    if np_bytes.size == 0:
+        return 0, 0
+    # Compute indices where value changes
+    changes = np.diff(np_bytes) != 0
+    run_ends = np.where(changes)[0] + 1
+    # Include start and end indices
+    indices = np.concatenate(([0], run_ends, [np_bytes.size]))
+    run_lengths = np.diff(indices)
+    max_run = run_lengths.max()
+    avg_run = run_lengths.mean()
+    return int(max_run), float(avg_run)
 
-    # Analyze common byte patterns for 2-byte sequences
-    if len(file_bytes) >= 2:
-        patterns2 = [file_bytes[i:i+2] for i in range(len(file_bytes) - 1)]
-        counter2 = Counter(pattern.hex() for pattern in patterns2)
-        common_2byte_patterns = [f"{pat} (count: {cnt})" for pat, cnt in counter2.most_common(3)]
+def compute_patterns(file_bytes: bytes):
+    arr = np.frombuffer(file_bytes, dtype=np.uint8)
+    # 2-byte patterns
+    if arr.size >= 2:
+        patterns2 = arr[:-1].astype(np.uint16) * 256 + arr[1:].astype(np.uint16)
+        uniques2, counts2 = np.unique(patterns2, return_counts=True);
+        # Sort indices by descending count
+        indices2 = np.argsort(-counts2)[:3]
+        common_2byte_patterns = [f"0x{uniques2[i]:04x} (count: {counts2[i]})" for i in indices2]
     else:
         common_2byte_patterns = []
 
-    # Analyze common byte patterns for 4-byte sequences
-    if len(file_bytes) >= 4:
-        patterns4 = [file_bytes[i:i+4] for i in range(len(file_bytes) - 3)]
-        counter4 = Counter(pattern.hex() for pattern in patterns4)
-        common_4byte_patterns = [f"{pat} (count: {cnt})" for pat, cnt in counter4.most_common(3)]
+    # 4-byte patterns
+    if arr.size >= 4:
+        a = arr[:-3].astype(np.uint32) << 24
+        b = arr[1:-2].astype(np.uint32) << 16
+        c = arr[2:-1].astype(np.uint32) << 8
+        d = arr[3:].astype(np.uint32)
+        patterns4 = a + b + c + d
+        uniques4, counts4 = np.unique(patterns4, return_counts=True)
+        indices4 = np.argsort(-counts4)[:3]
+        common_4byte_patterns = [f"0x{uniques4[i]:08x} (count: {counts4[i]})" for i in indices4]
     else:
         common_4byte_patterns = []
 
-    # Calculate distribution characteristics: skewness and kurtosis of byte values
+    return common_2byte_patterns, common_4byte_patterns
+
+def compute_distribution(np_bytes: np.ndarray):
     skewness_value = skew(np_bytes)
     kurtosis_value = kurtosis(np_bytes)
+    return skewness_value, kurtosis_value
 
-    # Extract file information
-    file_type = os.path.splitext(file)[1]
-    filename = os.path.basename(file)
+def compute_autocorrelation(np_bytes: np.ndarray, max_lag: int = 10):
+    autocorrs = []
+    for lag in range(1, max_lag + 1):
+        if len(np_bytes) <= lag:
+            autocorrs.append(None)
+        else:
+            a = np_bytes[:-lag]
+            b = np_bytes[lag:]
+            if np.std(a) == 0 or np.std(b) == 0:
+                autocorrs.append(0)
+            else:
+                corr = np.corrcoef(a, b)[0, 1]
+                autocorrs.append(corr)
+    return autocorrs
 
-    # Compile all statistics into a dictionary with grouped and logically ordered data
+def compute_even_odd_distribution(np_bytes: np.ndarray):
+    even_count = np.sum((np_bytes % 2) == 0)
+    odd_count = np.sum((np_bytes % 2) == 1)
+    ratio = even_count / odd_count if odd_count != 0 else None
+    return {"even": int(even_count), "odd": int(odd_count), "even_to_odd_ratio": ratio}
+
+def compute_ngram_entropy(file_bytes: bytes, n: int):
+    if len(file_bytes) < n:
+        return 0
+    arr = np.frombuffer(file_bytes, dtype=np.uint8)
+    shape = (arr.size - n + 1, n)
+    strides = (arr.strides[0], arr.strides[0])
+    ngrams = np.lib.stride_tricks.as_strided(arr, shape=shape, strides=strides)
+    unique, counts = np.unique(ngrams, axis=0, return_counts=True)
+    probs = counts / np.sum(counts)
+    return -np.sum(probs * np.log2(probs))
+
+def analyze_bytes(file: str) -> dict:
+    """Analyze a single file for byte statistics and return a dictionary with the results."""
+    # Read file as bytes
+    with open(file, "rb") as f:
+        file_bytes = f.read()
+
+    # Convert to numpy array
+    np_bytes = np.frombuffer(file_bytes, dtype=np.uint8)
+
+    # Compute metadata
+    filename, file_type = compute_file_metadata(file)
+
+    # Compute occurrence statistics
+    byte_counts, total_bytes, unique_bytes, most_common, least_common = compute_byte_occurrences(np_bytes)
+
+    # Compute basic stats
+    mean_value, median_value, std_value = compute_basic_stats(np_bytes)
+
+    # Compute rate-of-change stats
+    mean_rate, median_rate, std_rate = compute_rate_of_change(np_bytes)
+
+    # Compute entropy
+    entropy_value = compute_entropy(byte_counts, total_bytes)
+
+    # Compute runs
+    max_run, avg_run = compute_runs(np_bytes)
+
+    # Compute byte patterns
+    common_2byte_patterns, common_4byte_patterns = compute_patterns(file_bytes)
+
+    # Compute distribution characteristics
+    skewness_value, kurtosis_value = compute_distribution(np_bytes)
+
+    # Compute additional statistical features
+    autocorrs = compute_autocorrelation(np_bytes)
+    even_odd_distribution = compute_even_odd_distribution(np_bytes)
+    ngram_entropy = compute_ngram_entropy(file_bytes, 3)
+
     stats = {
         # File Metadata
         'filename': filename,
@@ -111,7 +190,6 @@ def analyze_file(file: str) -> pd.DataFrame:
         
         # Byte Occurrence Statistics
         'total_bytes': total_bytes,
-        'nonzero_bytes': nonzero_bytes,
         'unique_bytes': unique_bytes,
         'most_common_bytes': most_common,
         'least_common_bytes': least_common,
@@ -120,194 +198,124 @@ def analyze_file(file: str) -> pd.DataFrame:
         'mean_byte_value': mean_value,
         'median_byte_value': median_value,
         'std_dev_byte_value': std_value,
+        
+        # Rate-of-Change Metrics
+        'mean_rate_of_change': mean_rate,
+        'median_rate_of_change': median_rate,
+        'std_dev_rate_of_change': std_rate,
+        
+        # Distribution and Pattern Analyses
+        'entropy': entropy_value,
+        'max_run_length': max_run,
+        'avg_run_length': avg_run,
+        'common_2byte_patterns': common_2byte_patterns,
+        'common_4byte_patterns': common_4byte_patterns,
+        
+        # Distribution Characteristics
         'skewness': skewness_value,
         'kurtosis': kurtosis_value,
         
-        # Rate-of-Change Metrics
-        'mean_rate_of_change': mean_rate_of_change,
-        'median_rate_of_change': median_rate_of_change,
-        'std_dev_rate_of_change': std_rate_of_change,
-        
-        # Distribution and Pattern Analyses
-        'entropy': entropy,
-        'max_run_length': max_run_length,
-        'avg_run_length': avg_run_length,
-        'common_2byte_patterns': common_2byte_patterns,
-        'common_4byte_patterns': common_4byte_patterns
+        # Additional Statistical Features
+        'autocorrelation': autocorrs,
+        'even_odd_distribution': even_odd_distribution,
+        'ngram_entropy': ngram_entropy
     }
 
-    # Define the column order for the output DataFrame following the grouped structure
-    columns = [
-        'filename', 'file_type',
-        'total_bytes', 'nonzero_bytes', 'unique_bytes', 'most_common_bytes', 'least_common_bytes',
-        'mean_byte_value', 'median_byte_value', 'std_dev_byte_value', 'skewness', 'kurtosis',
-        'mean_rate_of_change', 'median_rate_of_change', 'std_dev_rate_of_change',
-        'entropy', 'max_run_length', 'avg_run_length', 'common_2byte_patterns', 'common_4byte_patterns'
-    ]
-    
-    return pd.DataFrame([stats], columns=columns)
+    return stats
 
-def analyze_files(files: list[str]) -> pd.DataFrame:
-    """
-    Analyze multiple files and combine their statistics into a single DataFrame.
-    
-    Parameters:
-        files (list[str]): List of file paths to analyze.
+def print_stats(stats_list: list):
+    """Pretty print the list of statistics dictionaries in a command-line friendly format."""
+    for i, stats in enumerate(stats_list, start=1):
+        print(f"FILE #{i}: {stats['filename']}")
+        print(f"  File Type: {stats['file_type']}")
+        print(f"  Byte Occurrence Statistics:")
+        print(f"    Total Bytes: {stats['total_bytes']}")
+        print(f"    Unique Bytes: {stats['unique_bytes']}")
+        most_common = ', '.join(stats['most_common_bytes']) if stats['most_common_bytes'] else 'N/A'
+        least_common = ', '.join(stats['least_common_bytes']) if stats['least_common_bytes'] else 'N/A'
+        print(f"    Most Common Bytes: {most_common}")
+        print(f"    Least Common Bytes: {least_common}")
+
+        print(f"  Basic Byte Value Statistics:")
+        print(f"    Mean Value: {stats['mean_byte_value']}")
+        print(f"    Median Value: {stats['median_byte_value']}")
+        print(f"    Std Dev: {stats['std_dev_byte_value']}")
+
+        print(f"  Rate-of-Change Metrics:")
+        print(f"    Mean Rate: {stats['mean_rate_of_change']}")
+        print(f"    Median Rate: {stats['median_rate_of_change']}")
+        print(f"    Std Dev Rate: {stats['std_dev_rate_of_change']}")
+
+        print(f"  Additional Statistics:")
+        print(f"    Entropy: {stats['entropy']}")
+        print(f"    Max Run Length: {stats['max_run_length']}")
+        print(f"    Avg Run Length: {stats['avg_run_length']}")
+        print(f"    Skewness: {stats['skewness']}")
+        print(f"    Kurtosis: {stats['kurtosis']}")
+
+        print(f"  Common Byte Patterns:")
+        pattern2 = ', '.join(stats['common_2byte_patterns']) if stats['common_2byte_patterns'] else 'N/A'
+        pattern4 = ', '.join(stats['common_4byte_patterns']) if stats['common_4byte_patterns'] else 'N/A'
+        print(f"    2-byte Patterns: {pattern2}")
+        print(f"    4-byte Patterns: {pattern4}")
         
-    Returns:
-        pd.DataFrame: DataFrame containing statistics for each file.
-    """
-    # Use list comprehension to collect individual DataFrames
-    dataframes = [analyze_file(file) for file in files if os.path.isfile(file)]
-    if dataframes:
-        return pd.concat(dataframes, ignore_index=True)
-    else:
-        return pd.DataFrame()  # Return empty DataFrame if no valid files found
-
-def print_file_stats(df: pd.DataFrame):
-    """
-    Print the statistics for each analyzed file contained in the DataFrame.
-    
-    Parameters:
-        df (pd.DataFrame): DataFrame with byte statistics.
-    """
-    for i, row in enumerate(df.itertuples(index=False), start=1):
-        print(f"FILE #{i}: {row.filename}")
-        # Iterate through all fields in the row
-        for field, value in row._asdict().items():
-            if isinstance(value, (list, np.ndarray)):
-                # Convert each element of the array to a string and join them with commas
-                print(f"    {field}: {', '.join(str(item) for item in value)}")
-            else:
-                print(f"    {field}: {value}")
-        print()
-
-def pick_files_gui() -> list[str]:
-    """
-    Launch a GUI file picker for the user to select files.
-    
-    Returns:
-        list[str]: List of selected file paths.
-    """
-    root = tk.Tk()
-    root.withdraw()  # Hide the main window
-    files = list(filedialog.askopenfilenames(title="Select files to analyze"))
-    root.destroy()  # Close the Tkinter instance
-    return files
-
-def pick_directory_gui() -> list[str]:
-    """
-    Launch a GUI directory picker and list files from the selected directory (non-recursively).
-    
-    Returns:
-        list[str]: List of file paths from the selected directory.
-    """
-    root = tk.Tk()
-    root.withdraw()
-    directory = filedialog.askdirectory(title="Select directory to analyze")
-    root.destroy()
-
-    if not directory:
-        return []
-    files = [os.path.join(directory, f) for f in os.listdir(directory)
-             if os.path.isfile(os.path.join(directory, f))]
-    return files
-
-def get_input_files(args: argparse.Namespace) -> list[str]:
-    """
-    Process command-line arguments to determine which files to analyze.
-    
-    Behavior:
-      - If the file flag (-f/--files) is provided with arguments, validate each file.
-      - If the file flag is provided with no arguments, launch the file picker GUI.
-      - If the directory flag (-d/--dirs) is provided with arguments, list files from each directory (non-recursive).
-      - If the directory flag is provided with no arguments, launch the directory picker GUI.
-      - If neither flag is provided, default to the file picker GUI.
-    
-    Parameters:
-        args (argparse.Namespace): Parsed command-line arguments.
-    
-    Returns:
-        list[str]: List of file paths to analyze.
-    """
-    import sys
-    files = []
-    
-    # Process file flag (-f/--files)
-    if '-f' in sys.argv or '--files' in sys.argv:
-        if args.files:
-            for f in args.files:
-                if os.path.isfile(f):
-                    files.append(f)
-                    print(f"File '{f}' provided.")
-                else:
-                    print(f"Error: '{f}' is not a valid file.")
-        else:
-            print("File flag set with no arguments; launching file picker GUI...")
-            gui_files = pick_files_gui()
-            if not gui_files:
-                print("No files selected.")
-            files.extend(gui_files)
-    
-    # Process directory flag (-d/--dirs)
-    if '-d' in sys.argv or '--dirs' in sys.argv:
-        if args.dirs:
-            for d in args.dirs:
-                if os.path.isdir(d):
-                    dir_files = [os.path.join(d, f) for f in os.listdir(d)
-                                 if os.path.isfile(os.path.join(d, f))]
-                    if dir_files:
-                        print(f"Directory '{d}' provided with {len(dir_files)} files.")
-                    else:
-                        print(f"Directory '{d}' does not contain any files.")
-                    files.extend(dir_files)
-                else:
-                    print(f"Error: '{d}' is not a valid directory.")
-        else:
-            print("Directory flag set with no arguments; launching directory picker GUI...")
-            gui_dir_files = pick_directory_gui()
-            if not gui_dir_files:
-                print("No files found in selected directory.")
-            files.extend(gui_dir_files)
-    
-    # Default to file picker GUI if no flags are provided
-    if not any(flag in sys.argv for flag in ('-f', '--files', '-d', '--dirs')):
-        print("No command-line arguments provided; using file picker GUI...")
-        gui_files = pick_files_gui()
-        if not gui_files:
-            print("No files selected.")
-        files.extend(gui_files)
-    
-    return files
+        print(f"  Additional Statistical Features:")
+        # Format autocorrelation values
+        autocorr_values = [f"{val:.4f}" for val in stats['autocorrelation']]
+        print(f"    Autocorrelation (lags 1-10): {autocorr_values}")
+        
+        # Format even/odd distribution
+        even_odd = stats['even_odd_distribution']
+        ratio = even_odd['even_to_odd_ratio']
+        ratio_str = f"{ratio:.4f}" if ratio is not None else "N/A"
+        print(f"    Even/Odd Distribution: {even_odd['even']} even bytes, {even_odd['odd']} odd bytes (ratio: {ratio_str})")
+        
+        # Format n-gram entropy
+        print(f"    N-gram Entropy (3-byte): {stats['ngram_entropy']:.4f}")
+        print("\n")
 
 def main():
-    """
-    Main function for the Byte Statistics Analyzer.
-    
-    It parses command-line arguments, retrieves the input files using the appropriate
-    methods (command-line or GUI), analyzes the files, prints the resulting statistics,
-    and saves them to a CSV file if requested.
-    """
     parser = argparse.ArgumentParser(description='Analyze files for byte statistics.')
     parser.add_argument("-f", "--files", nargs="*", default=[], help="File(s) to analyze.")
     parser.add_argument("-d", "--dirs", nargs="*", default=[], help="Directory(ies) to analyze (non-recursive).")
-    parser.add_argument("--generate-csv", action="store_true", help="Generate a CSV file with the analysis results. Defaults to off.")
+    parser.add_argument("--generate-csv", action="store_true", help="Generate a CSV file with the analysis results.")
     args = parser.parse_args()
 
-    files = get_input_files(args)
+    # Use the FilePicker class to get input files
+    files = FilePicker.get_input_files(args)
     if not files:
         print("No valid files provided. Exiting...")
         return
 
-    df = analyze_files(files)
-    if df.empty:
+    # Analyze each file and collect their statistics as dictionaries
+    stats_list = []
+    total_files = len(files)
+    for i, file in enumerate(files, 1):
+        try:
+            stats = analyze_bytes(file)
+            stats_list.append(stats)
+            print(f"FILE {i}/{total_files} finished processing. [{file}]")
+        except Exception as e:
+            print(f"Error analyzing {file}: {e}")
+
+    if not stats_list:
         print("No data to analyze. Exiting...")
         return
 
-    print_file_stats(df)
+    # Pretty print stats
+    print_stats(stats_list)
 
     if args.generate_csv:
-        df.to_csv("byte_stats.csv", index=False)
+        # If CSV generation is desired, convert to CSV format
+        # Note: Since we are not using pandas, we will manually generate a CSV
+        import csv
+        # Get header from the first dictionary
+        header = list(stats_list[0].keys())
+        with open("byte_stats.csv", "w", newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=header)
+            writer.writeheader()
+            for stats in stats_list:
+                writer.writerow(stats)
         print("Statistics saved to 'byte_stats.csv'.")
 
 if __name__ == "__main__":

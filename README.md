@@ -15,6 +15,10 @@ A comprehensive tool that provides in-depth byte-level analysis of files, calcul
 - Rate-of-change analysis between consecutive bytes
 - Run length analysis to discover patterns
 - Detection of frequent 2-byte and 4-byte sequences
+- Additional statistical features including:
+   - Autocorrelation analysis
+   - Even/Odd byte distribution
+   - N-gram entropy (for example, 3-byte sequence entropy)
 - CSV export capability for further analysis
 
 ### 2. EXIF Analyzer
@@ -75,8 +79,8 @@ python byte-stats-analyzer.py -f path/to/file1 path/to/file2 --generate-csv
 
 **Command-Line Options:**
 - `-f`, `--files`: Specify one or more file paths for analysis
-- `-d`, `--dirs`: Specify one or more directory paths to analyze
-- `--generate-csv`: Save analysis results to CSV file
+- `-d`, `--dirs`: Specify one or more directory paths to analyze (non-recursive)
+- `--generate-csv`: Save analysis results to a CSV file
 
 ### EXIF Analyzer
 
